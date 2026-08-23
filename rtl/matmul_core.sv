@@ -17,6 +17,7 @@ module matmul_core (
     output logic [31:0] rd_data
 );
 
+    // internal storage
     logic [15:0] mat_a [0:7] [0:7]; // 8 x 8 matrix, Q8.8 (16-bits, 8 integer, 8 fractional)
     logic [15:0] mat_b [0:7] [0:7]; // 8 x 8 matrix, Q8.8 (16-bits, 8 integer, 8 fractional)
     logic [31:0] mat_c [0:7] [0:7]; // 8 x 8 result matrix, Q16.16 (32-bits, 16 integer, 16 fractional)
