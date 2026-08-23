@@ -82,8 +82,26 @@ module matmul_core_tb;
         end
     endtask
 
+    integer r, c;
+
     initial begin
         $display("---- matmul_core Testbench ----");
+
+        // proper reset sequence
+        rst_n = 0;
+        start = 0;
+        @(posedge clk);
+        @(negedge clk);
+        rst_n = 1;
+
+        // This is the zeroing loop
+        for (r = 0; r < 8; r = r + 1) begin
+            for (c = 0; c < 8; c = c + 1) begin
+                do_write(1'b0, r[2:0], c[2:0], 16'd0);
+                do_write(1'b1, r[2:0], c[2:0], 16'd0);
+            end
+        end
+
         // writing to mat_a[2][3] and reading from it.
         do_write(1'b0, 3'd2, 3'd3, 16'hABCD);
         do_read("mat_a_readback", 2'b00, 3'd2, 3'd3, 32'h0000ABCD);
@@ -97,6 +115,35 @@ module matmul_core_tb;
         do_write(1'b1, 3'd0, 3'd0, 16'hBBBB); // mat_b[0][0] = BBBB
         do_read("mat_a_independence", 2'b00, 3'd0, 3'd0, 32'h0000AAAA);
         do_read("mat_b_independence", 2'b01, 3'd0, 3'd0, 32'h0000BBBB);
+
+        // need to re-zero all entries after prev populated entries
+        for (r = 0; r < 8; r = r + 1) begin
+            for (c = 0; c < 8; c = c + 1) begin
+                do_write(1'b0, r[2:0], c[2:0], 16'd0);
+                do_write(1'b1, r[2:0], c[2:0], 16'd0);
+            end
+        end
+
+        // mat_a[0][0]= 1.0 (Q8.8 = 256), mat_b[0][0]= 2.0 (Q8.8 = 512)
+        do_write(1'b0, 3'd0, 3'd0, 16'd256);
+        do_write(1'b1, 3'd0, 3'd0, 16'd512);
+
+        // pulse start
+        start = 1'b1;
+        @(posedge clk);
+        #1;
+        start = 1'b0;
+
+        // wait for done (pauses execution until condition is true (1))
+        wait(done == 1'b1);
+
+        // here we will check the result -> 1.0 * 2.0 = 2.0, in Q16.16 it is 2 * 65536 = 131072
+        do_read("mat_c_0_0", 2'b10, 3'd0, 3'd0, 32'd131072);
+
+        // check that everything else is still 0
+        do_read("mat_c_1_1_zero", 2'b10, 3'd1, 3'd1, 32'd0);
+        do_read("mat_c_7_7_zero", 2'b10, 3'd7, 3'd7, 32'd0);
+
         $display("---- matmul_core Testbench end ----");
         if (fail_count == 0)
             $display("ALL TESTS PASSED");
