@@ -17,7 +17,7 @@
 #define REG_MAT_C 129
 #define STATUS_BUSY (1u << 0)
 #define STATUS_DONE (1u << 1)
-#define FPGA_CLK_MHZ 97.368421
+#define FPGA_CLK_MHZ 50.0
 
 // Q8.8 / Q16.16 fixed-point conversions
 static inline int16_t to_q8_8(double val)
