@@ -22,6 +22,8 @@ module matmul_avalon (
     logic [2:0] core_rd_row;
     logic [2:0] core_rd_col;
     logic [31:0] core_rd_data;
+    logic [7:0] wr_offset;
+    logic [7:0] rd_offset;
 
     matmul_core core_inst (
         .clk (clk),
@@ -39,9 +41,14 @@ module matmul_avalon (
         .rd_col (core_rd_col),
         .rd_data (core_rd_data)
     );
-        
-        logic [7:0] wr_offset;
-        logic [7:0] rd_offset;
+
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            core_start <= 1'b0;
+        end else if (write && address == 8'd0) begin
+            core_start <= writedata[0];
+        end
+    end
 
     always_comb begin
         core_wr_en = 1'b0;
@@ -49,12 +56,10 @@ module matmul_avalon (
         core_wr_row = 3'd0;
         core_wr_col = 3'd0;
         core_wr_data = 16'd0;
-        core_start = 1'b0;
         wr_offset = 8'd0;
+
         if (write) begin
-            if (address == 8'd0) begin
-                core_start = writedata[0];
-            end else if (address >= 8'd1 && address <= 8'd64) begin
+            if (address >= 8'd1 && address <= 8'd64) begin
                 // mat_a write
                 core_wr_en = 1'b1;
                 core_wr_sel = 1'b0;
@@ -70,9 +75,6 @@ module matmul_avalon (
                 core_wr_row = wr_offset[5:3];
                 core_wr_col = wr_offset[2:0];
                 core_wr_data = writedata[15:0];
-            end else begin
-                // mat_c (read_only)
-                core_wr_en = 1'b0;
             end
         end
     end
