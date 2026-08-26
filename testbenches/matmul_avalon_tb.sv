@@ -95,6 +95,18 @@ module matmul_avalon_tb;
         // check the status register (bit 0 = busy, bit 1 = done)
         avalon_read("status_idle", 8'd0, 32'd0);
 
+        // another test to check my most recent changes (confirming that 'done' stays high after the computation is complete).
+        avalon_write(8'd0, 32'd1); // pulse the start bit
+        wait_for_done();
+        avalon_read("done_stays_high_1", 8'd0, 32'd2); // bit 1 = done, bit 0 = busy
+        @(posedge clk);
+        @(posedge clk);
+        avalon_read("done_stays_high_2", 8'd0, 32'd2); // bit 1 = done, bit 0 = busy
+        @(posedge clk);
+        @(posedge clk);
+        avalon_read("done_stays_high_3", 8'd0, 32'd2); // bit 1 = done, bit 0 = busy
+        avalon_write(8'd0, 32'd0); // clear the start bit (returnns to idle state)
+
         // zero out all other entries
         for (r = 0; r < 8; r = r + 1) begin
             for (c = 0; c < 8; c = c + 1) begin
