@@ -10,7 +10,7 @@ The accelerator is designed, simulated, synthesized, integrated into a complete 
 
 A sequential (non-parallel) design: a single multiply-accumulate unit stepped through the full computation by a 3-counter FSM (`i`, `j`, `k`), computing `mat_c[i][j] = Σ mat_a[i][k] * mat_b[k][j]` for `k = 0..7`, one term per clock cycle. A full 8×8 result takes `8×8×8 = 512` cycles.
 
-This was a deliberate choice over a parallel (e.g., 8-MAC-unit) architecture, to get a complete, working, hardware-verified accelerator — parallelizing further is a natural next step, not something the current design forecloses.
+This was a deliberate choice over a parallel (e.g., 8-MAC-unit) architecture, to get a complete, working, hardware-verified accelerator sooner — parallelizing further is a natural next step, not something the current design forecloses.
 
 ## Modules
 
@@ -53,13 +53,13 @@ Getting this accelerator genuinely usable from Linux (not just simulated, and no
 - Resolved several real address-map conflicts with existing GHRD components during integration
 - Synthesized the complete system (HPS configuration, DDR3 controller, existing GHRD peripherals, and the accelerator) — 0 errors, ~5,660 ALMs, positive timing slack across every clock domain
 
-**Getting the HPS to actually see the accelerator over the memory-mapped bridge required working through several genuine, non-obvious issues** — documented here rather than glossed over, since they were real engineering problems with real fixes:
+**Getting the HPS to actually see the accelerator over the memory-mapped bridge required working through several genuine, non-obvious issues** — documented here rather than glossed over, since they were real engineering problems, and because the debugging path itself is worth being honest about (including a detour that turned out not to be the actual fix):
 
-- **HPS-to-FPGA bridges are disabled by default** and must be enabled at boot time; this normally happens automatically when the FPGA is configured *before* the HPS boots. The fix was building a `soc_system.rbf` (via `quartus_cpf`) and placing it on the SD card's boot partition, so U-Boot's own `fpga load` command configures the FPGA fabric *before* running `bridge_enable_handoff` — rather than relying on a separate JTAG-programming step that happens after Linux has already booted.
-- **A disconnected Avalon-MM slave port** (`sysid_qsys.control_slave`, a pre-existing GHRD component, left unconnected during initial integration) caused the shared Merlin interconnect fabric's address-decode logic to malform, stalling *all* reads on that fabric — not just the accelerator's own address. Fixed by connecting it properly in Platform Designer.
+- **Early investigation suspected the HPS-to-FPGA bridges were disabled** (since bridges are disabled by default until enabled at boot time), leading to building a `soc_system.rbf` via `quartus_cpf` and modifying the SD card's boot flow so U-Boot's own `fpga load` command would configure the FPGA before `bridge_enable_handoff` ran. **In hindsight, this was very likely not the actual fix**: `/sys/class/fpga_bridge/*/state` had already been reporting `enabled` (and `/sys/class/fpga_manager/fpga0/state` reporting `operating`) in earlier tests, using only JTAG programming followed by an HPS-only reset (the `KEY5` button) — meaning the bridges were probably enabled correctly the whole time. The `.rbf`/boot-script route is left working and in place (and the SD card's boot partition does *not* currently contain a `soc_system.rbf` — only `socfpga.dtb`, `u-boot.scr`, `zImage`, and the driver), but the two fixes below are what actually resolved the observed failures.
+- **A disconnected Avalon-MM slave port** (`sysid_qsys.control_slave`, a pre-existing GHRD component, left unconnected during initial integration) caused the shared Merlin interconnect fabric's address-decode logic to malform, stalling *all* reads on that fabric — not just the accelerator's own address. This fully explains the indefinite hang observed even at the very base of the lightweight bridge address range, independent of bridge-enable status. Fixed by connecting it properly in Platform Designer.
 - **A real RTL bug**: `matmul_avalon`'s `start` signal was purely combinational, reflecting the Avalon write pulse for only a single clock cycle. This meant `matmul_core`'s `done` state was visible for only one 20ns cycle before the FSM saw `!start` and reverted to idle — far too narrow a window for real software polling (via `mmap`-based reads with genuine OS/syscall overhead) to reliably catch, even though Icarus Verilog's fast testbench polling in simulation never revealed the problem. Fixed by making `core_start` a registered signal that holds its value until explicitly cleared, with a regression test added to confirm `done` now stays asserted across multiple cycles.
 
-Diagnosing the interconnect stall specifically required SignalTap (Quartus's embedded logic analyzer) to observe live bus signals inside the running FPGA fabric, since the failure wasn't reproducible in the register-level checks available from Linux alone.
+Diagnosing the interconnect stall specifically required SignalTap (Quartus's embedded logic analyzer) to observe live bus signals inside the running FPGA fabric, since the failure wasn't reproducible from the register-level checks available from Linux alone. The FPGA fabric is programmed via standard JTAG (Quartus Programmer) for each session; no `.rbf`-based boot-time configuration is currently required.
 
 ## Running the tests
 
@@ -75,7 +75,7 @@ vvp sim_avalon
 
 ## Running the hardware driver
 
-On the DE10-Standard, booted into Linux with the accelerator-inclusive `.rbf` loaded via U-Boot:
+On the DE10-Standard: program the FPGA fabric via Quartus Programmer (JTAG), boot Linux from the SD card (containing `socfpga.dtb`, `u-boot.scr`, `zImage`, and the driver source), then on the board:
 ```bash
 gcc -std=gnu99 -O2 -o matmul_driver matmul_driver.c -lrt -lm
 ./matmul_driver
