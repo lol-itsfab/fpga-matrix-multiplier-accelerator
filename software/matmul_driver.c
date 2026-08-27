@@ -18,6 +18,7 @@
 #define STATUS_BUSY (1u << 0)
 #define STATUS_DONE (1u << 1)
 #define FPGA_CLK_MHZ 50.0
+#define TOLERANCE 0.001
 
 // Q8.8 / Q16.16 fixed-point conversions
 static inline int16_t to_q8_8(double val)
@@ -28,6 +29,11 @@ static inline int16_t to_q8_8(double val)
 static inline double from_q16_16(int32_t val)
 {
     return (double)val / 65536.0;
+}
+
+static double elapsed_us(struct timespec start, struct timespec end)
+{
+    return (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_nsec - start.tv_nsec) / 1e3;
 }
 
 int main(void)
@@ -62,6 +68,8 @@ int main(void)
     // 8 x 8 matrix multiplication example
     double A[8][8];
     double B[8][8];
+    double C_cpu[8][8] = {0};
+    double C_fpga[8][8];
 
     for (int i = 0; i < 8; i++)
     {
@@ -71,6 +79,21 @@ int main(void)
             B[i][j] = ((i * 2 + j) % 8) + 1;
         }
     }
+
+    // CPU computation for verification
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            for (int k = 0; k < 8; k++)
+            {
+                C_cpu[i][j] += A[i][k] * B[k][j];
+            }
+        }
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &cpu_t1);
+    double cpu_us = elapsed_us(cpu_t0, cpu_t1);
 
     // Loading Matrix A
     for (int i = 0; i < 8; i++)
@@ -90,19 +113,17 @@ int main(void)
         }
     }
 
-    // Start the accelerator
-    struct timespec t0, t1;
-    clock_gettime(CLOCK_MONOTONIC, &t0);
+    // Start the FPGA accelerator and measure the HPS-visible latency
+    struct timespec fpga_t0, fpga_t1;
+    clock_gettime(CLOCK_MONOTONIC, &fpga_t0);
     regs[REG_CONTROL_STATUS] = 1; // Set control register to start operation
     while (!(regs[REG_CONTROL_STATUS] & STATUS_DONE))
     {
         // Wait for the operation to complete
     }
 
-    clock_gettime(CLOCK_MONOTONIC, &t1);
-    double elapsed_us = (t1.tv_sec - t0.tv_sec) * 1e6 + (t1.tv_nsec - t0.tv_nsec) / 1e3; // in microseconds
-    printf("HPS-visible accelerator latency: %.2f us\n", elapsed_us);
-    printf("Equivalent to approximately %.0f FGPA clock periods at %.3f MHz\n", elapsed_us * FPGA_CLK_MHZ, FPGA_CLK_MHZ);
+    clock_gettime(CLOCK_MONOTONIC, &fpga_t1);
+    double fpga_us = elapsed_us(fpga_t0, fpga_t1);
 
     // Reading Matrix C
     printf("\nResult Matrix C:\n");
@@ -114,6 +135,47 @@ int main(void)
             printf("%8.2f ", from_q16_16(raw));
         }
         printf("\n");
+    }
+
+    // Verify FPGA result against CPU result
+    int pass = 1;
+    double max_error = 0.0;
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            double error = fabs(C_fpga[i][j] - C_cpu[i][j]);
+            if (error > max_error)
+            {
+                max_error = error;
+            }
+
+            if (error > TOLERANCE)
+            {
+                pass = 0;
+            }
+        }
+    }
+
+    // Print performance results
+    printf("\n Result Matrix C:\n");
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            printf("%8.2f ", C_fpga[i][j]);
+        }
+        printf("\n");
+    }
+
+    printf("\nVerification: %s\n", pass ? "PASS" : "FAIL");
+    printf("Maximum error: %.6f\n", max_error);
+    printf("\nCPU matrix multiply latency: %.2f us\n", cpu_us);
+    printf("FPGA HPS-visible latency: %.2f us\n", fpga_us);
+    printf("Equivalent to approxiamtely %.0f FPGA clock periods at %.3f MHz\n", fpga_us * FPGA_CLK_MHZ, FPGA_CLK_MHZ);
+    if (fpga_us > 0.0)
+    {
+        printf("CPU / FPGA latency ratio: %.2fx\n", cpu_us / fpga_us);
     }
 
     // Deassert the control register to return to IDLE state
