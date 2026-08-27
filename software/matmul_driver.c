@@ -4,6 +4,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <time.h>
+#include <math.h>
 
 // The hardware address map 
 #define LW_BRIDGE_BASE 0xFF200000
@@ -81,6 +82,8 @@ int main(void)
     }
 
     // CPU computation for verification
+    struct timespec cpu_t0, cpu_t1;
+    clock_gettime(CLOCK_MONOTONIC, &cpu_t0);
     for (int i = 0; i < 8; i++)
     {
         for (int j = 0; j < 8; j++)
