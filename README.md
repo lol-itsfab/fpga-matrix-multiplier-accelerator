@@ -10,7 +10,7 @@ The accelerator is designed, simulated, synthesized, integrated into a complete 
 
 A sequential (non-parallel) design: a single multiply-accumulate unit stepped through the full computation by a 3-counter FSM (`i`, `j`, `k`), computing `mat_c[i][j] = Σ mat_a[i][k] * mat_b[k][j]` for `k = 0..7`, one term per clock cycle. A full 8×8 result takes `8×8×8 = 512` cycles.
 
-This was a deliberate choice over a parallel (e.g., 8-MAC-unit) architecture, to get a complete, working, hardware-verified accelerator sooner — parallelizing further is a natural next step, not something the current design forecloses.
+This was a deliberate choice over a parallel (e.g., 8-MAC-unit) architecture, to get a complete, working, hardware-verified accelerator — parallelizing further is a natural next step, not something the current design forecloses.
 
 ## Modules
 
