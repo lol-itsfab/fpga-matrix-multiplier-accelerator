@@ -70,7 +70,7 @@ int main(void)
     double A[8][8];
     double B[8][8];
     double C_cpu[8][8] = {0};
-    double C_fpga[8][8];
+    double C_fpga[8][8] = {0};
 
     for (int i = 0; i < 8; i++)
     {
@@ -98,7 +98,7 @@ int main(void)
     clock_gettime(CLOCK_MONOTONIC, &cpu_t1);
     double cpu_us = elapsed_us(cpu_t0, cpu_t1);
 
-    // Loading Matrix A
+    // Loading Matrix A to FPGA
     for (int i = 0; i < 8; i++)
     {
         for (int j = 0; j < 8; j++)
@@ -107,7 +107,7 @@ int main(void)
         }
     }
 
-    // Loading Matrix B
+    // Loading Matrix B to FPGA
     for (int i = 0; i < 8; i++)
     {
         for (int j = 0; j < 8; j++)
@@ -128,16 +128,14 @@ int main(void)
     clock_gettime(CLOCK_MONOTONIC, &fpga_t1);
     double fpga_us = elapsed_us(fpga_t0, fpga_t1);
 
-    // Reading Matrix C
-    printf("\nResult Matrix C:\n");
+    // Reading Matrix C from FPGA
     for (int i = 0; i < 8; i++)
     {
         for (int j = 0; j < 8; j++)
         {
             int32_t raw = (int32_t)regs[REG_MAT_C + i * 8 + j];
-            printf("%8.2f ", from_q16_16(raw));
+            C_fpga[i][j] = from_q16_16(raw);
         }
-        printf("\n");
     }
 
     // Verify FPGA result against CPU result
@@ -160,8 +158,8 @@ int main(void)
         }
     }
 
-    // Print performance results
-    printf("\n Result Matrix C:\n");
+    // Print FPGA result matrix
+    printf("\nFPGA Result Matrix C:\n");
     for (int i = 0; i < 8; i++)
     {
         for (int j = 0; j < 8; j++)
@@ -170,6 +168,19 @@ int main(void)
         }
         printf("\n");
     }
+
+    // Print CPU result matrix
+    printf("\nCPU Result Matrix C:\n");
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            printf("%8.2f ", C_cpu[i][j]);
+        }
+        printf("\n");
+    }
+    
+    // Print verification results and performance metrics
 
     printf("\nVerification: %s\n", pass ? "PASS" : "FAIL");
     printf("Maximum error: %.6f\n", max_error);
