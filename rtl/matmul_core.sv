@@ -18,16 +18,16 @@ module matmul_core (
 );
 
     // internal storage
-    logic [15:0] mat_a [0:7] [0:7]; // 8 x 8 matrix, Q8.8 (16-bits: 8 integer, 8 fractional)
-    logic [15:0] mat_b [0:7] [0:7]; // 8 x 8 matrix, Q8.8 (16-bits: 8 integer, 8 fractional)
-    logic [31:0] mat_c [0:7] [0:7]; // 8 x 8 result matrix, Q16.16 (32-bits: 16 integer, 16 fractional)
+    logic signed [15:0] mat_a [0:7] [0:7]; // 8 x 8 matrix, Q8.8 (16-bits: 8 integer, 8 fractional)
+    logic signed [15:0] mat_b [0:7] [0:7]; // 8 x 8 matrix, Q8.8 (16-bits: 8 integer, 8 fractional)
+    logic signed [31:0] mat_c [0:7] [0:7]; // 8 x 8 result matrix, Q16.16 (32-bits: 16 integer, 16 fractional)
 
     always_ff @(posedge clk) begin
         if (wr_en) begin
             if (wr_sel == 1'b0)
-                mat_a[wr_row][wr_col] <= wr_data;
+                mat_a[wr_row][wr_col] <= $signed(wr_data);
             else
-                mat_b[wr_row][wr_col] <= wr_data;
+                mat_b[wr_row][wr_col] <= $signed(wr_data);
         end
     end
 
@@ -52,7 +52,12 @@ module matmul_core (
     logic [2:0] i;
     logic [2:0] j;
     logic [2:0] k;
-    logic [31:0] accumulator;
+    logic signed [31:0] accumulator;
+    logic signed [31:0] product;
+
+    always_comb begin
+        product = mat_a[i][k] * mat_b[k][j];
+    end
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -60,14 +65,14 @@ module matmul_core (
             i <= 3'd0;
             j <= 3'd0;
             k <= 3'd0;
-            accumulator <= 32'd0;
+            accumulator <= 32'sd0;
         end else begin
             state <= next_state;
             if (state == ST_COMPUTE) begin
                 if (k == 3'd7) begin
                     // This becomes the last-multiply accumulate for this current (i, j) pair.
-                    mat_c[i][j] <= accumulator + (mat_a[i][k] * mat_b[k][j]);
-                    accumulator <= 32'd0;
+                    mat_c[i][j] <= accumulator + product;
+                    accumulator <= 32'sd0;
                     k <= 3'd0;
                     if (j == 3'd7) begin
                         j <= 3'd0;
@@ -77,7 +82,7 @@ module matmul_core (
                     end
                 end else begin
                     // Still accumulating for the current (i, j) pair.
-                    accumulator <= accumulator + (mat_a[i][k] * mat_b[k][j]);
+                    accumulator <= accumulator + product;
                     k <= k + 3'd1;
                 end
             end else if (state == ST_IDLE && start) begin
@@ -85,7 +90,7 @@ module matmul_core (
                 i <= 3'd0;
                 j <= 3'd0;
                 k <= 3'd0;
-                accumulator <= 32'd0;
+                accumulator <= 32'sd0;
             end
         end
     end
