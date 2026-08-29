@@ -1,0 +1,6 @@
+# Simulation executables
+sim_core
+sim_avalon
+
+# VS Code settings
+.vscode/
