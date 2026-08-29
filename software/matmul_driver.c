@@ -72,12 +72,33 @@ int main(void)
     double C_cpu[8][8] = {0};
     double C_fpga[8][8] = {0};
 
+    // Test 1: this is the original positive-only matrix test case
+    // for (int i = 0; i < 8; i++)
+    // {
+    //     for (int j = 0; j < 8; j++)
+    //     {
+    //         A[i][j] = (i + j) % 8 + 1;
+    //         B[i][j] = ((i * 2 + j) % 8) + 1;
+    //     }
+    // }
+
+
+    // Test 2: This is the mixed positive and negative matrix test case (will show that both CPU and FPGA can handle negative numbers correctly)
     for (int i = 0; i < 8; i++)
     {
         for (int j = 0; j < 8; j++)
         {
             A[i][j] = (i + j) % 8 + 1;
+            if ((i + j) % 2 == 1)
+            {
+                A[i][j] = -A[i][j]; // Make some elements negative
+            }
+
             B[i][j] = ((i * 2 + j) % 8) + 1;
+            if ((i + j) % 3 == 0)
+            {
+                B[i][j] = -B[i][j]; // Make some elements negative
+            }
         }
     }
 
