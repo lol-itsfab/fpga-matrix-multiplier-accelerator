@@ -51,12 +51,27 @@ module matmul_core (
 
     logic [2:0] i;
     logic [2:0] j;
-    logic [2:0] k;
-    logic signed [31:0] accumulator;
-    logic signed [31:0] product;
+    logic signed [31:0] product [0:7];
+    // here we widened the adder-tree signals since adding multiple signed 32-bit products can require extra bits.
+    logic signed [32:0] sum_level1 [0:3];
+    logic signed [33:0] sum_level2 [0:1];
+    logic signed [34:0] dot_product;
 
     always_comb begin
-        product = mat_a[i][k] * mat_b[k][j];
+        for (int n = 0; n < 8; n++) begin
+            product[n] = mat_a[i][n] * mat_b[n][j];
+        end
+
+        // first adder tree level
+        sum_level1[0] = $signed(product[0]) + $signed(product[1]);
+        sum_level1[1] = $signed(product[2]) + $signed(product[3]);
+        sum_level1[2] = $signed(product[4]) + $signed(product[5]);
+        sum_level1[3] = $signed(product[6]) + $signed(product[7]);
+
+        // second adder tree level
+        sum_level2[0] = $signed(sum_level1[0]) + $signed(sum_level1[1]);
+        sum_level2[1] = $signed(sum_level1[2]) + $signed(sum_level1[3]);
+        dot_product = $signed(sum_level2[0]) + $signed(sum_level2[1]);
     end
 
     always_ff @(posedge clk or negedge rst_n) begin
@@ -64,37 +79,28 @@ module matmul_core (
             state <= ST_IDLE;
             i <= 3'd0;
             j <= 3'd0;
-            k <= 3'd0;
-            accumulator <= 32'sd0;
         end else begin
             state <= next_state;
             if (state == ST_COMPUTE) begin
-                if (k == 3'd7) begin
-                    // This becomes the last-multiply accumulate for this current (i, j) pair.
-                    mat_c[i][j] <= accumulator + product;
-                    accumulator <= 32'sd0;
-                    k <= 3'd0;
-                    if (j == 3'd7) begin
-                        j <= 3'd0;
+                // Here we have one complete dot product for the current (i, j) pair, so we can store it in mat_c.
+                mat_c[i][j] <= dot_product[31:0]; // store the lower 32 bits of the dot product
+                if (j == 3'd7) begin
+                    j <= 3'd0;
+                    if (i < 3'd7) begin
                         i <= i + 3'd1;
-                    end else begin
-                        j <= j + 3'd1;
                     end
                 end else begin
-                    // Still accumulating for the current (i, j) pair.
-                    accumulator <= accumulator + product;
-                    k <= k + 3'd1;
+                    j <= j + 3'd1;
                 end
             end else if (state == ST_IDLE && start) begin
                 // We reset counters as we are about to enter the compute state.
                 i <= 3'd0;
                 j <= 3'd0;
-                k <= 3'd0;
-                accumulator <= 32'sd0;
             end
         end
     end
 
+    // Next state logic
     always_comb begin
         next_state = state;
         case (state)
@@ -104,7 +110,7 @@ module matmul_core (
             end
 
             ST_COMPUTE: begin
-                if (i == 3'd7 && j == 3'd7 && k == 3'd7)
+                if (i == 3'd7 && j == 3'd7)
                     next_state = ST_DONE;
             end
 
